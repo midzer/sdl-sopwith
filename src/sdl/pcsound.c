@@ -28,6 +28,7 @@
 
 #define VOLUME 4000 /* out of 1 << 15 */
 #define FILTER_KERNEL_LEN 51
+#define OVERSAMPLE_FACTOR 25
 
 // The following values give the cutoff range for our band-pass
 // filter. These frequencies come from a frequency analysis of
@@ -177,10 +178,26 @@ static void AddFilters(struct filter *f1, struct filter *f2)
 }
 
 // square wave function for sound generation
-static inline float square_wave(float time)
+static inline float SquareWave(float time)
 {
 	int l = (int) time;
 	return time - l < 0.5 ? -0.5 : 0.5;
+}
+
+static float OversampledSquareWave(int i)
+{
+	float presample;
+	int j;
+
+	// Sample the square wave at close to TIMER_FREQ and downsample
+	// using a simple low-pass filter. This reduces aliasing artifacts.
+	presample = 0;
+	for (j = 0; j < OVERSAMPLE_FACTOR; j++) {
+		float t = i + ((float) j) / OVERSAMPLE_FACTOR;
+		t = (t * current_freq) / output_freq;
+		presample += SquareWave(t);
+	}
+	return presample / ((float) OVERSAMPLE_FACTOR);
 }
 
 // callback function to generate sound
@@ -209,9 +226,9 @@ static void snd_callback(void *userdata, Uint8 *stream8, int len)
 		if (!speaker_on) {
 			sample = 0;
 		} else {
-			sample = square_wave(current_freq * (i + lasttime)
-			                   / output_freq);
+			sample = OversampledSquareWave(i + lasttime);
 		}
+
 		sample = FilterNext(&tinny_filter, sample);
 		stream[i] = (signed int) (sample * VOLUME);
 	}

@@ -41,14 +41,14 @@ GRNDTYPE *ground;
 
 static int have_savescore = 0;
 static score_t savescore;		/* save players score on restart  */
-static int starting_level = 0;
+int starting_level = 0;
 
 static char helptxt[] =
 "\n"
 PACKAGE_STRING "\n"
 "Copyright (C) 1984, 1985, 1987 BMB Compuscience\n"
 "Copyright (C) 1984-2000 David L. Clark\n"
-"Copyright (C) 2001-2022 Simon Howard, Jesse Smith\n"
+"Copyright (C) 2001-2023 Simon Howard, Jesse Smith\n"
 "Licensed under the GNU GPL v2.\n"
 "\n"
 "Usage:  sopwith [options]\n"
@@ -784,7 +784,7 @@ static OBJECTS *initflock(const original_ob_t *orig_ob)
 	ob->ob_newsym = symbol_flock[0];
 	ob->ob_drawf = NULL;
 	ob->ob_movef = moveflck;
-	ob->ob_clr = 9;
+	ob->ob_clr = 1;
 	ob->ob_onmap = true;
 
 	for (j = 0; j < NUM_STRAY_BIRDS; ++j) {
@@ -1093,6 +1093,7 @@ void swinit(int argc, char *argv[])
 
 	Timer_Init();
 	Vid_Init();
+	Vid_SetVideoPalette(conf_video_palette);
 
 	// dont init speaker if started with -q (quiet)
 	if (soundflg) {

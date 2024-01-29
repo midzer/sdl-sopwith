@@ -21,8 +21,23 @@
 #include "swsymbol.h"
 #include "config.h"
 
-#if defined(HAVE_NETINET_IN_H) || defined(HAVE_WINSOCK_H)
+// We only enable TCP/IP support if we have the appropriate socket header
+// files. Emscripten doesn't get TCP/IP.
+#if !defined(__EMSCRIPTEN__) && ( \
+    defined(HAVE_NETINET_IN_H) || defined(HAVE_WINSOCK_H))
 #define TCPIP
+#endif
+
+// In Emscripten mode there's nothing we can exit to. This might also be
+// useful when porting to certain systems (eg. games consoles).
+#ifdef __EMSCRIPTEN__
+#define NO_EXIT
+#endif
+
+// In Emcripten mode we don't bother with fullscreen mode. This is also
+// something likely useful for games consoles.
+#ifdef __EMSCRIPTEN__
+#define NO_FULLSCREEN
 #endif
 
 #ifdef _MSC_VER

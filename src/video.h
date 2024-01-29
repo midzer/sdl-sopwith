@@ -61,6 +61,12 @@ extern void Vid_Update(void);
 
 extern bool Vid_GetCtrlBreak(void);
 
+// video palette
+
+void Vid_SetVideoPalette(int palette);
+const char* Vid_GetVideoPaletteName(int palette);
+int Vid_GetNumVideoPalettes(void);
+
 // keyboard functions
 
 extern int Vid_GetKey(void);
@@ -92,6 +98,7 @@ extern void Vid_XorPixel(int x, int y, int clr);
 
 extern void Vid_DispSymbol(int x, int y, sopsym_t *symbol,
                            ob_owner_t owner);
+extern int Vid_FuselageColor(ob_owner_t clr);
 
 // clear screen
 

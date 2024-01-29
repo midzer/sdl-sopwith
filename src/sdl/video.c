@@ -24,25 +24,56 @@
 
 #include "video.h"
 #include "sw.h"
+#include "swinit.h"
 
 // lcd mode to emulate my old laptop i used to play sopwith on :)
 
 //#define LCD
 
-static SDL_Color cga_pal[] = {
-#ifdef LCD
-	{213, 226, 138}, {150, 160, 150},
-	{120, 120, 160}, {0, 20, 200},
-#else
-	{0, 0, 0}, {0, 255, 255},
-	{255, 0, 255}, {255, 255, 255},
-#endif
+static SDL_Color cga_pal[] = {{}, {}, {}, {}};
+
+typedef struct {
+	char name[13]; // Up to 12 characters will display correctly on the menu
+	SDL_Color color[4];
+} VideoPalette;
+
+VideoPalette VideoPalettes[] = {
+	{"CGA 1", 		// CGA black, cyan, magenta, white (Sopwith's default color scheme)
+		{{0, 0, 0}, {0, 255, 255}, {255, 0, 255}, {255, 255, 255}}},
+	{"CGA 2", 		// CGA black, red, green, yellow
+		{{0, 0, 0}, {0, 255, 0}, {255, 0, 0}, {255, 255, 0}}},
+	{"CGA 3", 		// CGA black, cyan, red, white (aka CGA mode 5)
+		{{0, 0, 0}, {0, 255, 255}, {255, 0, 0}, {255, 255, 255}}},
+	{"Mono Amber",   // Shades of amber from a monochrome CGA display
+		{{0, 0, 0}, {255, 170, 16}, {242, 125, 0}, {255, 226, 52}}},
+	{"Mono Green", 	// Shades of green from a monochrome CGA display
+		{{0, 0, 0}, {12, 238, 56}, {8, 202, 48}, {49, 253, 90}}},
+	{"Mono Grey", 	// Shades of grey from a monochrome CGA display
+		{{0, 0, 0}, {222, 222, 210}, {182, 186, 182}, {255, 255, 255}}},
+	{"Tosh LCD 1",		// Toshiba laptop with STN panel
+		{{213, 226, 138}, {150, 160, 150}, {120, 120, 160}, {0, 20, 200}}},
+	{"Tosh LCD 2",		// Toshiba laptop with STN panel, reversed
+		{{0, 20, 200}, {120, 120, 160}, {150, 160, 150}, {213, 226, 138}}},
+	{"Tosh LCD 3",		// Toshiba T1000 with no backlight
+		{{0x72, 0x88, 0x79}, {0x4b, 0x6e, 0x75},
+		 {0x42, 0x5a, 0x75}, {0x27, 0x46, 0x6d}}},
+	{"IBM LCD",  // IBM PC Convertible
+		{{0x6b, 0x85, 0x88}, {0x56, 0x6b, 0x6e},
+		 {0x42, 0x52, 0x54}, {0x2e, 0x39, 0x3b}}},
+	{"Tandy LCD", // Tandy 1100FD
+		{{0x48, 0xad, 0x68}, {0x36, 0x8c, 0x61},
+		 {0x24, 0x6c, 0x5a}, {0x13, 0x4a, 0x54}}},
+	{"Gas Plasma",
+		{{0x7d, 0x1b, 0x02}, {0xd3, 0x41, 0x00},
+		 {0xa8, 0x2e, 0x01}, {0xfe, 0x54, 0x00}}},
 };
 
 bool vid_fullscreen = false;
 
 extern unsigned char *vid_vram;
 extern unsigned int vid_pitch;
+extern int gamenum;
+extern bool isNetworkGame(void);
 
 int keybindings[NUM_KEYS] = {
 	0,                    // KEY_UNKNOWN
@@ -493,6 +524,27 @@ void Vid_Reset(void)
 	Vid_Update();
 }
 
+void Vid_SetVideoPalette(int palette)
+{
+	cga_pal[0] = VideoPalettes[palette].color[0];
+	cga_pal[1] = VideoPalettes[palette].color[1];
+	cga_pal[2] = VideoPalettes[palette].color[2];
+	cga_pal[3] = VideoPalettes[palette].color[3];
+	SDL_SetPaletteColors(screenbuf->format->palette, cga_pal, 0, sizeof(cga_pal) / sizeof(*cga_pal));
+	Vid_Update();
+}
+
+const char* Vid_GetVideoPaletteName(int palette)
+{
+        return VideoPalettes[palette].name;
+}
+
+int Vid_GetNumVideoPalettes(void)
+{
+    int numPalettes = sizeof(VideoPalettes) / sizeof(VideoPalettes[0]);
+	return numPalettes;
+}
+
 #define INPUT_BUFFER_LEN 32
 static SDL_Keysym input_buffer[INPUT_BUFFER_LEN];
 static int input_buffer_head = 0, input_buffer_tail = 0;
@@ -548,10 +600,49 @@ static bool IsSpecialKey(SDL_Keysym *k) {
 	}
 }
 
+static bool CtrlDown(void)
+{
+	return (SDL_GetModState() & KMOD_CTRL) != 0;
+}
+
+static bool AltDown(void)
+{
+	return (SDL_GetModState() & KMOD_ALT) != 0;
+}
+
+static void CtrlKeyPress(SDL_KeyCode k)
+{
+	switch (k) {
+#ifndef NO_EXIT
+	case SDLK_c:
+	case SDLK_PAUSE:
+		++ctrlbreak;
+		if (ctrlbreak >= 3) {
+			fprintf(stderr,
+				"user aborted with 3 ^C's\n");
+			exit(-1);
+		}
+		break;
+#endif
+	case SDLK_r:
+		if (!isNetworkGame()) {
+			gamenum = starting_level;
+			swinitlevel();
+		}
+		break;
+	case SDLK_q:
+		if (!isNetworkGame()) {
+			swrestart();
+		}
+		break;
+	default:
+		break;
+	}
+}
+
 static void getevents(void)
 {
 	SDL_Event event;
-	static bool ctrldown = 0, altdown = 0;
 	int need_redraw = 0;
 	int i;
 	sopkey_t translated;
@@ -559,26 +650,14 @@ static void getevents(void)
 	while (SDL_PollEvent(&event)) {
 		switch (event.type) {
 		case SDL_KEYDOWN:
-			if (event.key.keysym.sym == SDLK_LALT) {
-				altdown = 1;
-			} else if (event.key.keysym.sym == SDLK_LCTRL
-			        || event.key.keysym.sym == SDLK_RCTRL) {
-				ctrldown = 1;
-			} else if (ctrldown &&
-			           (event.key.keysym.sym == SDLK_c ||
-			            event.key.keysym.sym == SDLK_PAUSE)) {
-				++ctrlbreak;
-				if (ctrlbreak >= 3) {
-					fprintf(stderr,
-						"user aborted with 3 ^C's\n");
-					exit(-1);
-				}
-			} else if (event.key.keysym.sym == SDLK_RETURN) {
-				if (altdown) {
-					vid_fullscreen = !vid_fullscreen;
-					Vid_Reset();
-					continue;
-				}
+			if (CtrlDown()) {
+				CtrlKeyPress(event.key.keysym.sym);
+			} else if (AltDown() && event.key.keysym.sym == SDLK_RETURN) {
+#ifndef NO_FULLSCREEN
+				vid_fullscreen = !vid_fullscreen;
+				Vid_Reset();
+				continue;
+#endif
 			}
 			if (!SDL_IsTextInputActive()
 			 || IsSpecialKey(&event.key.keysym)) {
@@ -592,17 +671,10 @@ static void getevents(void)
 			break;
 
 		case SDL_KEYUP:
-			if (event.key.keysym.sym == SDLK_LALT) {
-				altdown = 0;
-			} else if (event.key.keysym.sym == SDLK_LCTRL
-			        || event.key.keysym.sym == SDLK_RCTRL) {
-				ctrldown = 0;
-			} else {
-				translated = translate_scancode(
-					event.key.keysym.scancode);
-				if (translated != KEY_UNKNOWN) {
-					keysdown[translated] &= ~1;
-				}
+			translated = translate_scancode(
+				event.key.keysym.scancode);
+			if (translated != KEY_UNKNOWN) {
+				keysdown[translated] &= ~1;
 			}
 			break;
 
